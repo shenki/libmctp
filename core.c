@@ -542,8 +542,18 @@ static void mctp_rx(struct mctp *mctp, struct mctp_bus *bus, mctp_eid_t src,
 
 static void mctp_rx_raw(struct mctp *mctp, struct mctp_pktbuf *pkt)
 {
+	struct mctp_hdr *hdr;
+	bool tag_owner;
+	uint8_t tag;
+
+	hdr = mctp_pktbuf_hdr(pkt);
+
+	tag = (hdr->flags_seq_tag >> MCTP_HDR_TAG_SHIFT) & MCTP_HDR_TAG_MASK;
+	tag_owner =
+		(hdr->flags_seq_tag >> MCTP_HDR_TO_SHIFT) & MCTP_HDR_TO_MASK;
+
 	if (mctp->message_rx)
-		mctp->message_rx(0, mctp->message_rx_data,
+		mctp->message_rx(0, tag_owner, tag, mctp->message_rx_data,
 				 pkt->data + pkt->mctp_hdr_off,
 				    pkt->end - pkt->mctp_hdr_off);
 }

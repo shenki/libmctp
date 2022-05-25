@@ -64,7 +64,8 @@ static int tun_init(struct ctx *ctx)
 	return 0;
 }
 
-static void packet_rx(uint8_t src_eid, void *data, void *pkt, size_t len)
+static void packet_rx(uint8_t src_eid, bool tag_owner, uint8_t msg_tag,
+		      void *data, void *pkt, size_t len)
 {
 	struct ctx *ctx = data;
 	struct tun_pi tun_pi;
