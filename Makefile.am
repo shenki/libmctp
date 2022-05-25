@@ -22,7 +22,7 @@ systemdsystemunit_DATA = \
 	systemd/system/mctp-demux.socket
 endif
 
-bin_PROGRAMS = utils/mctp-demux-daemon
+bin_PROGRAMS = utils/mctp-demux-daemon utils/mctp-tun
 noinst_PROGRAMS = utils/mctp-in utils/mctp-pipe
 utils_mctp_demux_daemon_SOURCES = utils/mctp-demux-daemon.c
 if HAVE_PCAP
@@ -30,6 +30,8 @@ utils_mctp_demux_daemon_SOURCES += utils/mctp-capture.c
 endif
 utils_mctp_demux_daemon_LDADD = libmctp.la $(pcap_LIBS)
 utils_mctp_demux_daemon_CFLAGS = $(pcap_CFLAGS)
+
+utils_mctp_tun_SOURCES = utils/mctp-tun.c
 
 pkgconfig_DATA = libmctp.pc
 

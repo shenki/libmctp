@@ -68,6 +68,7 @@ struct mctp {
 	enum {
 		ROUTE_ENDPOINT,
 		ROUTE_BRIDGE,
+		ROUTE_RAW,
 	}			route_policy;
 	size_t max_message_size;
 };
@@ -341,9 +342,9 @@ static struct mctp_bus *find_bus_for_eid(struct mctp *mctp,
 	return &mctp->busses[0];
 }
 
-int mctp_register_bus(struct mctp *mctp,
-		struct mctp_binding *binding,
-		mctp_eid_t eid)
+static int __mctp_register_bus(struct mctp *mctp,
+			       struct mctp_binding *binding,
+			       mctp_eid_t eid, int policy)
 {
 	int rc = 0;
 
@@ -360,7 +361,7 @@ int mctp_register_bus(struct mctp *mctp,
 	mctp->busses[0].eid = eid;
 	binding->bus = &mctp->busses[0];
 	binding->mctp = mctp;
-	mctp->route_policy = ROUTE_ENDPOINT;
+	mctp->route_policy = policy;
 
 	if (binding->start) {
 		rc = binding->start(binding);
@@ -374,6 +375,17 @@ int mctp_register_bus(struct mctp *mctp,
 	}
 
 	return rc;
+}
+
+int mctp_register_bus(struct mctp *mctp, struct mctp_binding *binding,
+		      mctp_eid_t eid)
+{
+	return __mctp_register_bus(mctp, binding, eid, ROUTE_ENDPOINT);
+}
+
+int mctp_register_raw_bus(struct mctp *mctp, struct mctp_binding *binding)
+{
+	return __mctp_register_bus(mctp, binding, 0, ROUTE_RAW);
 }
 
 void mctp_unregister_bus(struct mctp *mctp, struct mctp_binding *binding)
@@ -528,6 +540,14 @@ static void mctp_rx(struct mctp *mctp, struct mctp_bus *bus, mctp_eid_t src,
 	}
 }
 
+static void mctp_rx_raw(struct mctp *mctp, struct mctp_pktbuf *pkt)
+{
+	if (mctp->message_rx)
+		mctp->message_rx(0, mctp->message_rx_data,
+				 pkt->data + pkt->mctp_hdr_off,
+				    pkt->end - pkt->mctp_hdr_off);
+}
+
 void mctp_bus_rx(struct mctp_binding *binding, struct mctp_pktbuf *pkt)
 {
 	struct mctp_bus *bus = binding->bus;
@@ -555,6 +575,11 @@ void mctp_bus_rx(struct mctp_binding *binding, struct mctp_pktbuf *pkt)
 	 * drop the packet in mctp_rx anyway */
 	if (mctp->route_policy == ROUTE_ENDPOINT && hdr->dest != bus->eid)
 		goto out;
+
+	if (mctp->route_policy == ROUTE_RAW) {
+		mctp_rx_raw(mctp, pkt);
+		goto out;
+	}
 
 	flags = hdr->flags_seq_tag & (MCTP_HDR_FLAG_SOM | MCTP_HDR_FLAG_EOM);
 	tag = (hdr->flags_seq_tag >> MCTP_HDR_TAG_SHIFT) & MCTP_HDR_TAG_MASK;
@@ -830,4 +855,26 @@ int mctp_message_tx(struct mctp *mctp, mctp_eid_t eid, bool tag_owner,
 
 	return mctp_message_tx_on_bus(bus, bus->eid, eid, tag_owner, msg_tag,
 				      msg, msg_len);
+}
+
+int mctp_packet_raw_tx(struct mctp_binding *binding, void *pkt, size_t pkt_len)
+{
+	struct mctp_bus *bus = binding->bus;
+	struct mctp_pktbuf *pktbuf;
+
+	pktbuf = mctp_pktbuf_alloc(binding, pkt_len);
+	if (!pktbuf)
+		return -1;
+	memcpy(mctp_pktbuf_data(pktbuf), pkt, pkt_len);
+
+	/* add to tx queue */
+	if (bus->tx_queue_tail)
+		bus->tx_queue_tail->next = pktbuf;
+	else
+		bus->tx_queue_head = pktbuf;
+	bus->tx_queue_tail = pktbuf;
+
+	mctp_send_tx_queue(bus);
+
+	return 0;
 }
